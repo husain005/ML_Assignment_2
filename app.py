@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sklearn.metrics import (
     accuracy_score,
@@ -12,73 +14,91 @@ from sklearn.metrics import (
     confusion_matrix
 )
 
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-st.title("ML Assignment 2 - Classification Models")
+st.title("ML Assignment 2 - Model Comparison")
 
 uploaded_file = st.file_uploader(
-    "Upload test_data.csv",
+    "Upload Test CSV",
     type=["csv"]
-)
-
-model_name = st.selectbox(
-    "Select Model",
-    [
-        "Logistic Regression",
-        "Decision Tree",
-        "KNN",
-        "Naive Bayes",
-        "SVM"
-    ]
 )
 
 if uploaded_file is not None:
 
-    data = pd.read_csv(uploaded_file)
+    df = pd.read_csv(uploaded_file)
 
-    X = data.drop("target", axis=1)
-    y = data["target"]
+    X = df.drop("target", axis=1)
+    y = df["target"]
 
-    if model_name == "Logistic Regression":
-        model = joblib.load("logistic.pkl")
+    models = {
+        "Logistic Regression": "logistic.pkl",
+        "Decision Tree": "tree.pkl",
+        "KNN": "knn.pkl",
+        "Naive Bayes": "nb.pkl",
+        "SVM": "svm.pkl"
+    }
 
-    elif model_name == "Decision Tree":
-        model = joblib.load("tree.pkl")
+    results = []
 
-    elif model_name == "KNN":
-        model = joblib.load("knn.pkl")
+    for model_name, model_file in models.items():
 
-    elif model_name == "Naive Bayes":
-        model = joblib.load("nb.pkl")
+        model = joblib.load(model_file)
 
-    else:
-        model = joblib.load("svm.pkl")
+        pred = model.predict(X)
+        prob = model.predict_proba(X)[:, 1]
 
-    predictions = model.predict(X)
-    probabilities = model.predict_proba(X)[:,1]
+        results.append([
+            model_name,
+            accuracy_score(y, pred),
+            roc_auc_score(y, prob),
+            precision_score(y, pred),
+            recall_score(y, pred),
+            f1_score(y, pred),
+            matthews_corrcoef(y, pred)
+        ])
 
-    accuracy = accuracy_score(y, predictions)
-    precision = precision_score(y, predictions)
-    recall = recall_score(y, predictions)
-    f1 = f1_score(y, predictions)
-    auc = roc_auc_score(y, probabilities)
-    mcc = matthews_corrcoef(y, predictions)
+    results_df = pd.DataFrame(
+        results,
+        columns=[
+            "Model",
+            "Accuracy",
+            "AUC",
+            "Precision",
+            "Recall",
+            "F1 Score",
+            "MCC"
+        ]
+    )
 
-    st.subheader("Evaluation Metrics")
+    st.subheader("All Model Results")
 
-    st.write("Accuracy:", accuracy)
-    st.write("Precision:", precision)
-    st.write("Recall:", recall)
-    st.write("F1 Score:", f1)
-    st.write("AUC:", auc)
-    st.write("MCC:", mcc)
+    st.dataframe(results_df)
 
-    st.subheader("Confusion Matrix")
+    best_model = results_df.sort_values(
+        by="Accuracy",
+        ascending=False
+    ).iloc[0]
 
-    cm = confusion_matrix(y, predictions)
+    st.success(
+        f"Best Model: {best_model['Model']} "
+        f"(Accuracy = {best_model['Accuracy']:.4f})"
+    )
 
-    fig, ax = plt.subplots()
+    selected_model = st.selectbox(
+        "Select Model for Confusion Matrix",
+        results_df["Model"]
+    )
+
+    model_file = models[selected_model]
+    model = joblib.load(model_file)
+
+    pred = model.predict(X)
+
+    cm = confusion_matrix(y, pred)
+
+    st.subheader(
+        f"Confusion Matrix - {selected_model}"
+    )
+
+    fig, ax = plt.subplots(figsize=(5,4))
 
     sns.heatmap(
         cm,
@@ -87,5 +107,8 @@ if uploaded_file is not None:
         cmap="Blues",
         ax=ax
     )
+
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
 
     st.pyplot(fig)
